@@ -1,0 +1,79 @@
+services:
+  api-server:
+    networks:
+      - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  scheduler:
+    networks:
+      - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  dag-processor:
+    networks:
+      - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  triggerer:
+    networks:
+      - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  example_db:
+    image: postgres:latest
+    restart: always
+    container_name: example_db
+    networks:
+      - airflow
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=example_db
+    volumes:
+      - ./include/initdb/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-p", "5432", "-U", "admin", "-d", "example_db" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.8.1
+    container_name: mlflow
+    networks:
+      - default
+    environment:
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow,localhost"
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --allowed-hosts "mlflow:*, localhost:*"
+
+  api:
+    image: unsloth/unsloth
+    container_name: unsloth-fastapi
+    ports:
+      - "8000:8000"
+      - "8888:8888"
+    volumes:
+      - ./src:/workspace/work
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [ gpu ]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+#    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+
